@@ -20,11 +20,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Install Chrome for Selenium
+      - name: Install Chromium for Selenium
         run: |
           sudo apt-get update
           sudo apt-get install -y chromium-browser chromium-chromedriver
-          echo "Chrome installed"
 
       - name: Run scraper
         env:
