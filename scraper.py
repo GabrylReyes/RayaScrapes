@@ -43,71 +43,96 @@ def send_email(results_df):
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
 
-
 def scrape_jobs():
-    """Scrape job listings from the Akraya job board."""
-    # Setup Chrome options for headless operation in GitHub Actions
+    """Scrape job listings from the Akraya job board for multiple locations."""
     options = Options()
-    options.add_argument("--headless=new")  # new headless mode
-    options.add_argument("--no-sandbox")
+    options.add_argument("--headless=new")
     options.add_argument("--disable-dev-shm-usage")
-    options.binary_location = "/usr/bin/chromium-browser"  # Path for GitHub Actions
+    options.add_argument("--no-sandbox")
+    options.binary_location = "/usr/bin/chromium-browser"
 
     driver = webdriver.Chrome(options=options)
 
-    results = []
+    # Locations to search
+    locations_to_search = ["San Diego, CA", "Mountain View, CA"]
+
+    # Store DataFrames by location
+    location_results = {}
+
+    def safe_find(job, selector, attr=None):
+        """Safely find element text or attribute from a job card."""
+        try:
+            el = job.find_element(By.CSS_SELECTOR, selector)
+            if attr:
+                return el.get_attribute(attr)
+            return el.text.strip()
+        except:
+            return None
 
     try:
-        # Search for multiple cities
-        cities = ["San Diego, CA", "Mountain View, CA"]
+        # Loop through each location
+        for location in locations_to_search:
+            driver.get("https://jobs.akraya.com/index.smpl")
+            time.sleep(2)
 
-        for city in cities:
-            print(f"🔍 Searching for jobs in {city}...")
-            driver.get("https://jobs.akraya.com")
-
-            # Find the location input by ID
+            # Search box
             search_box = driver.find_element(By.ID, "location-quicksearch")
             search_box.clear()
-            search_box.send_keys(city)
+            search_box.send_keys(location)
             search_box.send_keys(Keys.RETURN)
-            search_box.send_keys(Keys.RETURN)  # Some pages require double ENTER
-
-            # Wait for the results page to load
+            search_box.send_keys(Keys.RETURN)  # Sometimes needed
             time.sleep(5)
 
-            # Each job container
+            # Find job cards
             jobs = driver.find_elements(By.CSS_SELECTOR, ".clearfix.hmg-jb-row")
-            print(f"Found {len(jobs)} jobs in {city}.\n")
+            print(f"Found {len(jobs)} jobs in {location}.\n")
 
+            results = []
             for job in jobs:
-                try:
-                    # Updated selectors to match new HTML structure
-                    title = job.find_element(By.CSS_SELECTOR, "h3.job-post-title a").text.strip()
-                    location = job.find_element(By.CSS_SELECTOR, ".job-post-location.POST_LOCATION").text.strip()
-                    link = job.find_element(By.CSS_SELECTOR, "h3.job-post-title a").get_attribute("href")
-                    date_posted = job.find_element(By.CSS_SELECTOR, ".job-post-date .POST_DATE_F").text.strip()
+                title = safe_find(job, "h3.job-post-title span.POST_TITLE")
+                if not title:  # Skip if no title
+                    continue
 
-                    results.append({
-                        "Search City": city,
-                        "Title": title,
-                        "Location": location,
-                        "Date Posted": date_posted,
-                        "Link": link
-                    })
-                except Exception as e:
-                    print("Error parsing a job listing:", e)
+                job_location = safe_find(job, ".job-post-location.POST_LOCATION")
+                link = safe_find(job, "h3.job-post-title a", attr="href")
+                date_posted = safe_find(job, ".job-post-date .POST_DATE_F")
+
+                if date_posted:
+                    print(f"Raw date string: '{date_posted}'")
+
+                results.append({
+                    "Title": title,
+                    "Location": job_location,
+                    "Date Posted": date_posted if date_posted else None,
+                    "Link": link
+                })
+
+            # Create DataFrame
+            df = pd.DataFrame(results)
+
+            if not df.empty:
+                # Convert date format from MM/DD/YY
+                df['Date Posted'] = pd.to_datetime(df['Date Posted'], format="%m/%d/%y", errors='coerce')
+                # Sort by date
+                df = df.sort_values(by=['Date Posted'], ascending=False)
+                # Fill missing dates with "Unknown"
+                df['Date Posted'] = df['Date Posted'].fillna("Unknown")
+
+            location_results[location] = df
 
     finally:
         driver.quit()
 
-    return pd.DataFrame(results)
+    return location_results
 
 
 if __name__ == "__main__":
-    df = scrape_jobs()
+    job_data = scrape_jobs()
 
-    if not df.empty:
-        print(df)
-        send_email(df)
-    else:
-        print("No jobs found.")
+    for location, df in job_data.items():
+        print(f"\nJobs in {location}:\n")
+        if not df.empty:
+            print(df.to_string(index=False))
+            # send_email(df)  # Uncomment if you want to email results
+        else:
+            print("No jobs found.")
