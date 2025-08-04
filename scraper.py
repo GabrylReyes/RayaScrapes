@@ -55,54 +55,47 @@ def scrape_jobs():
     options.binary_location = "/usr/bin/chromium-browser"  # Path for GitHub Actions
 
     driver = webdriver.Chrome(options=options)
-
     results = []
 
     try:
-        # Open the job board landing page
-        driver.get("https://jobs.akraya.com/index.smpl")
+        cities = ["San Diego, CA", "Mountain View, CA"]  # Multiple locations
 
-        # Find the location input by ID and enter "San Diego, CA"
-        search_box = driver.find_element(By.ID, "location-quicksearch")
-        search_box.clear()
-        search_box.send_keys("San Diego, CA")
-        search_box.send_keys(Keys.RETURN)
-        search_box.send_keys(Keys.RETURN)  # Some pages require double ENTER
+        for city in cities:
+            print(f"🔍 Searching for jobs in {city}...")
+            driver.get("https://jobs.akraya.com/index.smpl")
 
-        # Wait for the results page to load
-        time.sleep(5)
+            # Find the location input by ID
+            search_box = driver.find_element(By.ID, "location-quicksearch")
+            search_box.clear()
+            search_box.send_keys(city)
+            search_box.send_keys(Keys.RETURN)
+            search_box.send_keys(Keys.RETURN)  # Some pages require double ENTER
 
-        # Each job container
-        jobs = driver.find_elements(By.CSS_SELECTOR, ".clearfix.hmg-jb-row")
-        print(f"Found {len(jobs)} jobs.\n")
+            # Wait for results to load
+            time.sleep(5)
 
-        for job in jobs:
-            try:
-                title = job.find_element(By.CSS_SELECTOR, "h3.job-post-title span.POST_TITLE").text.strip()
-                location = job.find_element(By.CSS_SELECTOR, ".job-post-location.POST_LOCATION").text.strip()
-                link = job.find_element(By.CSS_SELECTOR, "h3.job-post-title a").get_attribute("href")
-                date_posted = job.find_element(By.CSS_SELECTOR, ".job-post-date .POST_DATE_F").text.strip()
+            # Each job container
+            jobs = driver.find_elements(By.CSS_SELECTOR, ".clearfix.hmg-jb-row")
+            print(f"Found {len(jobs)} jobs in {city}.\n")
 
-                results.append({
-                    "Title": title,
-                    "Location": location,
-                    "Date Posted": date_posted,
-                    "Link": link
-                })
-            except Exception as e:
-                print("Error parsing a job listing:", e)
+            for job in jobs:
+                try:
+                    title = job.find_element(By.CSS_SELECTOR, "h3.job-post-title span.POST_TITLE").text.strip()
+                    location = job.find_element(By.CSS_SELECTOR, ".job-post-location.POST_LOCATION").text.strip()
+                    link = job.find_element(By.CSS_SELECTOR, "h3.job-post-title a").get_attribute("href")
+                    date_posted = job.find_element(By.CSS_SELECTOR, ".job-post-date .POST_DATE_F").text.strip()
+
+                    results.append({
+                        "Search City": city,
+                        "Title": title,
+                        "Location": location,
+                        "Date Posted": date_posted,
+                        "Link": link
+                    })
+                except Exception as e:
+                    print("Error parsing a job listing:", e)
 
     finally:
         driver.quit()
 
     return pd.DataFrame(results)
-
-
-if __name__ == "__main__":
-    df = scrape_jobs()
-
-    if not df.empty:
-        print(df)
-        send_email(df)
-    else:
-        print("No jobs found.")
