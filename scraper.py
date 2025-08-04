@@ -55,10 +55,12 @@ def scrape_jobs():
     options.binary_location = "/usr/bin/chromium-browser"  # Path for GitHub Actions
 
     driver = webdriver.Chrome(options=options)
+
     results = []
 
     try:
-        cities = ["San Diego, CA", "Mountain View, CA"]  # Multiple locations
+        # Search for multiple cities
+        cities = ["San Diego, CA", "Mountain View, CA"]
 
         for city in cities:
             print(f"🔍 Searching for jobs in {city}...")
@@ -71,7 +73,7 @@ def scrape_jobs():
             search_box.send_keys(Keys.RETURN)
             search_box.send_keys(Keys.RETURN)  # Some pages require double ENTER
 
-            # Wait for results to load
+            # Wait for the results page to load
             time.sleep(5)
 
             # Each job container
