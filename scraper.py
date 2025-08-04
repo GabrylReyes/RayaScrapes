@@ -63,7 +63,7 @@ def scrape_jobs():
 
         for city in cities:
             print(f"🔍 Searching for jobs in {city}...")
-            driver.get("https://jobs.akraya.com/index.smpl")
+            driver.get("https://jobs.akraya.com")
 
             # Find the location input by ID
             search_box = driver.find_element(By.ID, "location-quicksearch")
