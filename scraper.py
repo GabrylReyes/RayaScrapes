@@ -62,7 +62,7 @@ def scrape_jobs():
 
         for city in cities:
             print(f"🔍 Searching for jobs in {city}...")
-            driver.get("https://jobs.akraya.com/index.smpl")
+            driver.get("https://jobs.akraya.com")
 
             # Wait for search box
             search_box = WebDriverWait(driver, 10).until(
