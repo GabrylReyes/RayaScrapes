@@ -47,11 +47,12 @@ def send_email(results_df):
 
 def scrape_jobs():
     """Scrape job listings from the Akraya job board."""
-    # Setup Chrome options for headless operation
+    # Setup Chrome options for headless operation in GitHub Actions
     options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--headless=new")  # new headless mode
     options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.binary_location = "/usr/bin/chromium-browser"  # Path for GitHub Actions
 
     driver = webdriver.Chrome(options=options)
 
