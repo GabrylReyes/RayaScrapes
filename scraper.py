@@ -133,6 +133,6 @@ if __name__ == "__main__":
         print(f"\nJobs in {location}:\n")
         if not df.empty:
             print(df.to_string(index=False))
-            # send_email(df)  # Uncomment if you want to email results
+            send_email(df)  # Uncomment if you want to email results
         else:
             print("No jobs found.")
