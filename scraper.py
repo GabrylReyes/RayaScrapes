@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-import urllib.parse  # <-- 1. IMPORT a library for URL encoding
+import urllib.parse
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -11,7 +11,6 @@ def scrape_jobs():
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--window-size=1920,1080")
-    # <-- 2. ADD a realistic User-Agent to look like a normal browser
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36")
     options.add_argument("--start-maximized")
     options.add_argument("--disable-dev-shm-usage")
@@ -31,26 +30,33 @@ def scrape_jobs():
             return None
 
     try:
+        # Navigate to the base URL once
+        base_url = "https://jobs.akraya.com"
+        print(f"Navigating to base URL: {base_url}")
+        driver.get(base_url)
+
+        wait = WebDriverWait(driver, 15)
+
         for location in locations_to_search:
             print(f"Searching for jobs in {location}...")
-            
-            # <-- 3. CONSTRUCT the search URL directly instead of interacting with the form
-            encoded_location = urllib.parse.quote_plus(location)
-            search_url = f"https://jobs.akraya.com/index.smpl?location={encoded_location}"
-            print(f"Navigating to: {search_url}")
-            driver.get(search_url)
 
-            wait = WebDriverWait(driver, 15)
-            
             try:
+                # Find the location input and enter the search term
+                search_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input[name="location"]')))
+                search_input.clear()  # Clear any previous value
+                search_input.send_keys(location)
+
+                # Find and click the search button
+                search_button = driver.find_element(By.CSS_SELECTOR, 'button[type="submit"]')
+                search_button.click()
+
                 # Wait for either job results OR the "no results" message to appear
                 wait.until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, ".job-post-row, .no-results"))
                 )
+
             except Exception:
-                # <-- 4. ADD powerful debugging if the wait fails again
                 print(f"CRITICAL: Timeout waiting for results in {location}. Saving debug files.")
-                # Sanitize location for filename
                 location_filename = location.replace(' ', '_').replace(',', '')
                 driver.save_screenshot(f"debug_screenshot_{location_filename}.png")
                 with open(f"debug_page_source_{location_filename}.html", "w", encoding="utf-8") as f:
@@ -87,11 +93,18 @@ def scrape_jobs():
             else:
                 all_results_html += "<p>No jobs found.</p>"
 
+            # After searching for a location, navigate back to the base URL for the next search
+            if location != locations_to_search[-1]:
+                print("Navigating back to base URL for next search...")
+                driver.get(base_url)
+                wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input[name="location"]')))
+
+
     finally:
         driver.quit()
-    
+
     all_results_html += "</body></html>"
-    
+
     with open("akraya_jobs.html", "w", encoding="utf-8") as f:
         f.write(all_results_html)
     print("Scraping complete. Results saved to akraya_jobs.html")
