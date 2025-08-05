@@ -31,10 +31,8 @@ def send_email(results_df):
     msg["From"] = sender_email
     msg["To"] = receiver_email
     msg["Subject"] = f"Job Scraper Results — {len(results_df)} Jobs Found"
-
     msg.attach(MIMEText(f"Here are the latest job scraper results:\n\n{csv_data}", "plain"))
 
-    # Send email using Gmail SMTP
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender_email, email_password)
@@ -42,6 +40,7 @@ def send_email(results_df):
         print("✅ Email sent successfully.")
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
+
 
 def scrape_jobs():
     """Scrape job listings from the Akraya job board for multiple locations."""
@@ -53,44 +52,42 @@ def scrape_jobs():
 
     driver = webdriver.Chrome(options=options)
 
-    # Locations to search
     locations_to_search = ["San Diego, CA", "Mountain View, CA"]
-
-    # Store DataFrames by location
     location_results = {}
 
     def safe_find(job, selector, attr=None):
         """Safely find element text or attribute from a job card."""
         try:
             el = job.find_element(By.CSS_SELECTOR, selector)
-            if attr:
-                return el.get_attribute(attr)
-            return el.text.strip()
+            return el.get_attribute(attr) if attr else el.text.strip()
         except:
             return None
 
     try:
-        # Loop through each location
         for location in locations_to_search:
             driver.get("https://jobs.akraya.com/index.smpl")
             time.sleep(2)
 
-            # Search box
+            # Search for location
             search_box = driver.find_element(By.ID, "location-quicksearch")
             search_box.clear()
             search_box.send_keys(location)
             search_box.send_keys(Keys.RETURN)
-            search_box.send_keys(Keys.RETURN)  # Sometimes needed
+            search_box.send_keys(Keys.RETURN)
             time.sleep(5)
 
-            # Find job cards
             jobs = driver.find_elements(By.CSS_SELECTOR, ".clearfix.hmg-jb-row")
             print(f"Found {len(jobs)} jobs in {location}.\n")
 
             results = []
             for job in jobs:
+                # Try multiple title selectors to avoid missing jobs
                 title = safe_find(job, "h3.job-post-title span.POST_TITLE")
-                if not title:  # Skip if no title
+                if not title:
+                    title = safe_find(job, "h3.job-post-title a")
+                if not title:
+                    print("⚠️ Could not find title for a job card. Debug HTML:")
+                    print(job.get_attribute("outerHTML")[:400])  # print first 400 chars
                     continue
 
                 job_location = safe_find(job, ".job-post-location.POST_LOCATION")
@@ -107,15 +104,13 @@ def scrape_jobs():
                     "Link": link
                 })
 
-            # Create DataFrame
+            # Make DataFrame
             df = pd.DataFrame(results)
 
             if not df.empty:
-                # Convert date format from MM/DD/YY
+                # Convert dates from MM/DD/YY
                 df['Date Posted'] = pd.to_datetime(df['Date Posted'], format="%m/%d/%y", errors='coerce')
-                # Sort by date
                 df = df.sort_values(by=['Date Posted'], ascending=False)
-                # Fill missing dates with "Unknown"
                 df['Date Posted'] = df['Date Posted'].fillna("Unknown")
 
             location_results[location] = df
@@ -129,17 +124,10 @@ def scrape_jobs():
 if __name__ == "__main__":
     job_data = scrape_jobs()
 
-    # Print jobs by location
     for location, df in job_data.items():
         print(f"\nJobs in {location}:\n")
         if not df.empty:
             print(df.to_string(index=False))
+            send_email(df)  # Email results
         else:
             print("No jobs found.")
-
-    # Combine all results into one DataFrame for emailing
-    all_jobs = pd.concat(job_data.values(), ignore_index=True)
-
-    if not all_jobs.empty:
-        send_email(all_jobs)
-
