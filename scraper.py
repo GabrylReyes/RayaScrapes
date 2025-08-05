@@ -14,19 +14,17 @@ from io import StringIO
 def send_email(results_df):
     """Send the scraped job results via email."""
     sender_email = os.environ.get("EMAIL_USER")
-    receiver_email = os.environ.get("EMAIL_TO", sender_email)  # Defaults to sending to yourself
+    receiver_email = os.environ.get("EMAIL_TO", sender_email)
     email_password = os.environ.get("EMAIL_PASS")
 
     if not sender_email or not email_password:
         print("❌ Email credentials not set. Skipping email sending.")
         return
 
-    # Convert DataFrame to CSV text
     csv_buffer = StringIO()
     results_df.to_csv(csv_buffer, index=False)
     csv_data = csv_buffer.getvalue()
 
-    # Create the email
     msg = MIMEMultipart()
     msg["From"] = sender_email
     msg["To"] = receiver_email
@@ -43,7 +41,6 @@ def send_email(results_df):
 
 
 def scrape_jobs():
-    """Scrape job listings from the Akraya job board for multiple locations."""
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--disable-dev-shm-usage")
@@ -51,12 +48,10 @@ def scrape_jobs():
     options.binary_location = "/usr/bin/chromium-browser"
 
     driver = webdriver.Chrome(options=options)
-
     locations_to_search = ["San Diego, CA", "Mountain View, CA"]
     location_results = {}
 
     def safe_find(job, selector, attr=None):
-        """Safely find element text or attribute from a job card."""
         try:
             el = job.find_element(By.CSS_SELECTOR, selector)
             return el.get_attribute(attr) if attr else el.text.strip()
@@ -68,7 +63,6 @@ def scrape_jobs():
             driver.get("https://jobs.akraya.com/index.smpl")
             time.sleep(2)
 
-            # Search for location
             search_box = driver.find_element(By.ID, "location-quicksearch")
             search_box.clear()
             search_box.send_keys(location)
@@ -76,18 +70,14 @@ def scrape_jobs():
             search_box.send_keys(Keys.RETURN)
             time.sleep(5)
 
-            jobs = driver.find_elements(By.CSS_SELECTOR, ".clearfix.hmg-jb-row")
+            # Grab ONLY actual job postings
+            jobs = driver.find_elements(By.CSS_SELECTOR, ".job-post-row")
             print(f"Found {len(jobs)} jobs in {location}.\n")
 
             results = []
             for job in jobs:
-                # Try multiple title selectors to avoid missing jobs
-                title = safe_find(job, "h3.job-post-title span.POST_TITLE")
+                title = safe_find(job, "h3.job-post-title span.POST_TITLE") or safe_find(job, "h3.job-post-title a")
                 if not title:
-                    title = safe_find(job, "h3.job-post-title a")
-                if not title:
-                    print("⚠️ Could not find title for a job card. Debug HTML:")
-                    print(job.get_attribute("outerHTML")[:400])  # print first 400 chars
                     continue
 
                 job_location = safe_find(job, ".job-post-location.POST_LOCATION")
@@ -104,11 +94,8 @@ def scrape_jobs():
                     "Link": link
                 })
 
-            # Make DataFrame
             df = pd.DataFrame(results)
-
             if not df.empty:
-                # Convert dates from MM/DD/YY
                 df['Date Posted'] = pd.to_datetime(df['Date Posted'], format="%m/%d/%y", errors='coerce')
                 df = df.sort_values(by=['Date Posted'], ascending=False)
                 df['Date Posted'] = df['Date Posted'].fillna("Unknown")
@@ -128,6 +115,6 @@ if __name__ == "__main__":
         print(f"\nJobs in {location}:\n")
         if not df.empty:
             print(df.to_string(index=False))
-            send_email(df)  # Email results
+            send_email(df)
         else:
             print("No jobs found.")
