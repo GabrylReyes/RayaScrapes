@@ -30,31 +30,22 @@ def scrape_jobs():
             return None
 
     try:
-        # Navigate to the base URL once
-        base_url = "https://jobs.akraya.com"
-        print(f"Navigating to base URL: {base_url}")
-        driver.get(base_url)
-
-        wait = WebDriverWait(driver, 15)
-
         for location in locations_to_search:
             print(f"Searching for jobs in {location}...")
 
+            encoded_location = urllib.parse.quote_plus(location)
+            search_url = f"https://jobs.akraya.com/index.smpl?location={encoded_location}"
+            print(f"Navigating to: {search_url}")
+            driver.get(search_url)
+
+            wait = WebDriverWait(driver, 15)
+
             try:
-                # Find the location input and enter the search term
-                search_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input[name="location"]')))
-                search_input.clear()  # Clear any previous value
-                search_input.send_keys(location)
-
-                # Find and click the search button
-                search_button = driver.find_element(By.CSS_SELECTOR, 'button[type="submit"]')
-                search_button.click()
-
                 # Wait for either job results OR the "no results" message to appear
+                # This is the correct wait condition for the page after search
                 wait.until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, ".job-post-row, .no-results"))
                 )
-
             except Exception:
                 print(f"CRITICAL: Timeout waiting for results in {location}. Saving debug files.")
                 location_filename = location.replace(' ', '_').replace(',', '')
@@ -92,13 +83,6 @@ def scrape_jobs():
                 all_results_html += df.to_html(index=False, escape=False, justify='left')
             else:
                 all_results_html += "<p>No jobs found.</p>"
-
-            # After searching for a location, navigate back to the base URL for the next search
-            if location != locations_to_search[-1]:
-                print("Navigating back to base URL for next search...")
-                driver.get(base_url)
-                wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input[name="location"]')))
-
 
     finally:
         driver.quit()
