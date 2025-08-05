@@ -51,38 +51,42 @@ def scrape_jobs():
 
     try:
         base_url = "https://jobs.akraya.com/"
-        
+        print(f"Navigating to: {base_url}")
+        driver.get(base_url)
+
+        wait = WebDriverWait(driver, 20)
+
         for location in locations_to_search:
             print(f"Searching for jobs in {location}...")
-            
-            # Navigate to the base URL for each search to ensure a clean state
-            print(f"Navigating to: {base_url}")
-            driver.get(base_url)
-
-            wait = WebDriverWait(driver, 20)
 
             try:
-                # Wait until the search box element is present in the DOM
+                # Wait until the search box is visible on the page
                 location_search_box = wait.until(
-                    EC.presence_of_element_located((By.ID, "location-quicksearch"))
+                    EC.visibility_of_element_located((By.ID, "location-quicksearch"))
                 )
-
-                # Then, wait until the element is clickable (visible and not disabled)
-                location_search_box = wait.until(
-                    EC.element_to_be_clickable((By.ID, "location-quicksearch"))
-                )
-
+                
+                # Clear any pre-existing text and enter the new location
                 location_search_box.clear()
                 location_search_box.send_keys(location)
-                location_search_box.send_keys(Keys.ENTER)
-                time.sleep(1) # Small delay for auto-suggestions to appear if any
+                
+                # Press Enter to submit the search
                 location_search_box.send_keys(Keys.ENTER)
 
-                # Wait for the job results or "no results" message
+                # The site might handle the search on the first enter. Let's see if we need a second.
+                # A brief pause to allow the page to react to the first enter.
+                time.sleep(1)
+
+                # Wait for the job results to be present on the page.
+                # This is the most crucial synchronization point.
                 wait.until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, ".job-post-row, .no-results"))
                 )
-                time.sleep(2) # Added a final sleep to ensure all content is rendered
+
+                # After the search, clear the search box for the next search
+                location_search_box = wait.until(
+                    EC.visibility_of_element_located((By.ID, "location-quicksearch"))
+                )
+                location_search_box.clear()
 
             except Exception as e:
                 print(f"CRITICAL: Timeout or error during search for {location}. Saving debug files. Error: {e}")
