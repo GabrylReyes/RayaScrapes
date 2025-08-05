@@ -129,10 +129,17 @@ def scrape_jobs():
 if __name__ == "__main__":
     job_data = scrape_jobs()
 
+    # Print jobs by location
     for location, df in job_data.items():
         print(f"\nJobs in {location}:\n")
         if not df.empty:
             print(df.to_string(index=False))
-            send_email(df)  # Uncomment if you want to email results
         else:
             print("No jobs found.")
+
+    # Combine all results into one DataFrame for emailing
+    all_jobs = pd.concat(job_data.values(), ignore_index=True)
+
+    if not all_jobs.empty:
+        send_email(all_jobs)
+
