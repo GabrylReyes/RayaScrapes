@@ -5,37 +5,50 @@ import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from io import StringIO
+from urllib.parse import urlencode
 
 
 def send_email(results_df):
-    """Send the scraped job results via email."""
+    """Send the scraped job results via email as an HTML table."""
     sender_email = os.environ.get("EMAIL_USER")
-    receiver_email = os.environ.get("EMAIL_TO", sender_email)  # Defaults to sending to yourself
+    receiver_email = os.environ.get("EMAIL_TO", sender_email)
     email_password = os.environ.get("EMAIL_PASS")
 
     if not sender_email or not email_password:
-        print("❌ Email credentials not set. Skipping email sending.")
+        print("❌ Email credentials not set in environment variables. Skipping email.")
         return
 
-    # Convert DataFrame to CSV text
-    csv_buffer = StringIO()
-    results_df.to_csv(csv_buffer, index=False)
-    csv_data = csv_buffer.getvalue()
-
-    # Create the email
+    html_body = f"""
+    <html>
+    <head>
+        <style>
+            body {{ font-family: sans-serif; }}
+            table {{ border-collapse: collapse; width: 100%; }}
+            th, td {{ border: 1px solid #dddddd; text-align: left; padding: 8px; }}
+            tr:nth-child(even) {{ background-color: #f2f2f2; }}
+            th {{ background-color: #4CAF50; color: white; }}
+        </style>
+    </head>
+    <body>
+        <h2>Akraya Job Alert 🤖</h2>
+        <p>Found <strong>{len(results_df)}</strong> new jobs posted in the last 30 days (excluding remote):</p>
+        {results_df.to_html(index=False)}
+        <p>This is an automated message from your Python scraper.</p>
+    </body>
+    </html>
+    """
     msg = MIMEMultipart()
     msg["From"] = sender_email
     msg["To"] = receiver_email
-    msg["Subject"] = f"Job Scraper Results — {len(results_df)} Jobs Found"
+    msg["Subject"] = f"Akraya Job Alert — {len(results_df)} Recent On-Site Jobs Found"
+    msg.attach(MIMEText(html_body, "html"))
 
-    msg.attach(MIMEText(f"Here are the latest job scraper results:\n\n{csv_data}", "plain"))
-
-    # Send email using Gmail SMTP
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender_email, email_password)
@@ -45,52 +58,78 @@ def send_email(results_df):
         print(f"❌ Failed to send email: {e}")
 
 
-def scrape_jobs():
-    """Scrape job listings from the Akraya job board."""
-    # Setup Chrome options for headless operation in GitHub Actions
+def scrape_jobs(location):
+    """Scrape job listings from Akraya for a specific location."""
     options = Options()
-    options.add_argument("--headless=new")  # new headless mode
+    options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.binary_location = "/usr/bin/chromium-browser"  # Path for GitHub Actions
+    options.binary_location = "/usr/bin/chromium-browser"
 
     driver = webdriver.Chrome(options=options)
-
     results = []
 
+    print(f"\n--- Scraping jobs for: {location} ---")
+
     try:
-        # Open the job board landing page
-        driver.get("https://jobs.akraya.com/index.smpl")
+        params = {
+            'arg': 'jb_search_results',
+            'jb_search_submitted': '1',
+            'location': location
+        }
+        base_url = "https://jobs.akraya.com/index.smpl"
+        target_url = f"{base_url}?{urlencode(params)}"
+        
+        print(f"Navigating to: {target_url}")
+        driver.get(target_url)
 
-        # Find the location input by ID and enter "San Diego, CA"
-        search_box = driver.find_element(By.ID, "location-quicksearch")
-        search_box.clear()
-        search_box.send_keys("San Diego, CA")
-        search_box.send_keys(Keys.RETURN)
-        search_box.send_keys(Keys.RETURN)  # Some pages require double ENTER
+        wait = WebDriverWait(driver, 10)
+        wait.until(EC.presence_of_element_located((By.ID, "JBSearchList_container")))
+        print("✅ Results page loaded.")
 
-        # Wait for the results page to load
-        time.sleep(5)
+        print("📜 Scrolling to load all job listings...")
+        last_count = 0
+        scroll_attempts = 0
+        while scroll_attempts < 5: 
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2)
+            current_count = len(driver.find_elements(By.CSS_SELECTOR, ".clearfix.hmg-jb-row"))
+            
+            if current_count == 0 and last_count == 0:
+                print("No job listings found on the results page for this location.")
+                break
 
-        # Each job container
+            print(f"Found {current_count} jobs so far...")
+            if current_count == last_count:
+                print("✅ Finished scrolling.")
+                break
+            
+            last_count = current_count
+            scroll_attempts += 1
+
         jobs = driver.find_elements(By.CSS_SELECTOR, ".clearfix.hmg-jb-row")
-        print(f"Found {len(jobs)} jobs.\n")
+        print(f"Parsing {len(jobs)} rows...")
 
         for job in jobs:
-            try:
-                title = job.find_element(By.CSS_SELECTOR, "h3.job-post-title span.POST_TITLE").text.strip()
-                location = job.find_element(By.CSS_SELECTOR, ".job-post-location.POST_LOCATION").text.strip()
-                link = job.find_element(By.CSS_SELECTOR, "h3.job-post-title a").get_attribute("href")
-                date_posted = job.find_element(By.CSS_SELECTOR, ".job-post-date .POST_DATE_F").text.strip()
+            title_elements = job.find_elements(By.CSS_SELECTOR, "h3.job-post-title")
+            if not title_elements:
+                continue
 
+            try:
+                title = title_elements[0].text.strip()
+                job_location = job.find_element(By.CSS_SELECTOR, ".job-post-location.POST_LOCATION").text.strip()
+                date_posted = job.find_element(By.CSS_SELECTOR, ".job-post-date .POST_DATE_F").text.strip()
+                
                 results.append({
                     "Title": title,
-                    "Location": location,
-                    "Date Posted": date_posted,
-                    "Link": link
+                    "Location": job_location,
+                    "Date Posted": date_posted
                 })
-            except Exception as e:
-                print("Error parsing a job listing:", e)
+            except Exception:
+                continue
+    
+    except TimeoutException:
+        print(f"❌ Timed out waiting for page content for {location}. Skipping.")
 
     finally:
         driver.quit()
@@ -99,10 +138,37 @@ def scrape_jobs():
 
 
 if __name__ == "__main__":
-    df = scrape_jobs()
+    target_locations = ["San Diego, CA", "Mountain View, CA"]
+    all_results_dfs = []
+    
+    print("🚀 Starting multi-location scraper...")
+    
+    for loc in target_locations:
+        df = scrape_jobs(loc)
+        if not df.empty:
+            all_results_dfs.append(df)
+            
+    print("\n--- All scraping finished. ---")
 
-    if not df.empty:
-        print(df)
-        send_email(df)
+    if all_results_dfs:
+        final_df = pd.concat(all_results_dfs, ignore_index=True)
+        print(f"\nScraped a total of {len(final_df)} jobs. Now applying filters...")
+
+        # Filter for the last 5 days
+        final_df['Parsed Date'] = pd.to_datetime(final_df['Date Posted'], format='%m/%d/%y')
+        cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=5)
+        recent_jobs_df = final_df[final_df['Parsed Date'] >= cutoff_date].copy()
+        recent_jobs_df.drop(columns=['Parsed Date'], inplace=True)
+
+        # --- NEW: FILTER TO REMOVE 'REMOTE' JOBS ---
+        # Using .str.lower() to make the filter case-insensitive
+        filtered_df = recent_jobs_df[recent_jobs_df['Location'].str.lower() != 'remote'].copy()
+
+        if not filtered_df.empty:
+            print(f"\nFound {len(filtered_df)} recent, on-site jobs.")
+            print(filtered_df.to_string())
+            send_email(filtered_df)
+        else:
+            print("\nFound jobs, but none matched the date and location criteria.")
     else:
-        print("No jobs found.")
+        print("\nNo jobs found across all specified locations.")
