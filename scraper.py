@@ -4,6 +4,7 @@ import time
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service # <-- IMPORT THE SERVICE CLASS
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -64,15 +65,16 @@ def scrape_jobs(location):
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    
-    # --- ADD THESE TWO ARGUMENTS FOR STABILITY IN GITHUB ACTIONS ---
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
-    # --------------------------------------------------------------
-    
     options.binary_location = "/usr/bin/chromium-browser"
 
-    driver = webdriver.Chrome(options=options)
+    # --- FINAL FIX: Explicitly define the WebDriver service ---
+    # This is the most reliable way to start the driver in a CI/CD environment.
+    service = Service()
+    driver = webdriver.Chrome(service=service, options=options)
+    # -----------------------------------------------------------
+    
     results = []
 
     print(f"\n--- Scraping jobs for: {location} ---")
@@ -160,13 +162,11 @@ if __name__ == "__main__":
         final_df = pd.concat(all_results_dfs, ignore_index=True)
         print(f"\nScraped a total of {len(final_df)} jobs. Now applying filters...")
 
-        # Filter for the last 30 days
         final_df['Parsed Date'] = pd.to_datetime(final_df['Date Posted'], format='%m/%d/%y')
         cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=30)
         recent_jobs_df = final_df[final_df['Parsed Date'] >= cutoff_date].copy()
         recent_jobs_df.drop(columns=['Parsed Date'], inplace=True)
 
-        # Filter to remove 'Remote' jobs
         filtered_df = recent_jobs_df[recent_jobs_df['Location'].str.lower() != 'remote'].copy()
 
         if not filtered_df.empty:
