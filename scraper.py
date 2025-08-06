@@ -4,7 +4,7 @@ import time
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service # <-- IMPORT THE SERVICE CLASS
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -67,13 +67,12 @@ def scrape_jobs(location):
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
-    options.binary_location = "/usr/bin/chromium-browser"
-
-    # --- FINAL FIX: Explicitly define the WebDriver service ---
-    # This is the most reliable way to start the driver in a CI/CD environment.
+    
+    # --- CHANGE HERE: The binary_location line is now REMOVED ---
+    # The new GitHub Action handles this automatically.
+    
     service = Service()
     driver = webdriver.Chrome(service=service, options=options)
-    # -----------------------------------------------------------
     
     results = []
 
