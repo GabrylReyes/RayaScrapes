@@ -91,6 +91,11 @@ def scrape_jobs(location):
         wait.until(EC.presence_of_element_located((By.ID, "JBSearchList_container")))
         print("✅ Results page loaded.")
 
+        # --- FINAL FIX: Add a pause to allow all dynamic content to render ---
+        # This prevents a race condition where the newest jobs might be missed.
+        print("Pausing for 3 seconds to ensure all jobs are loaded...")
+        time.sleep(3)
+
         print("📜 Scrolling to load all job listings...")
         last_count = 0
         scroll_attempts = 0
@@ -161,13 +166,8 @@ if __name__ == "__main__":
         location_pattern = '|'.join([loc.split(',')[0] for loc in target_locations])
         final_df = final_df[final_df['Location'].str.contains(location_pattern, case=False, na=False)].copy()
 
-        # Filter for the last 30 days
         final_df['Parsed Date'] = pd.to_datetime(final_df['Date Posted'], format='%m/%d/%y')
-        
-        # --- FIX HERE: Normalize the current time to midnight before comparing ---
-        # This ensures jobs posted 'today' are always included.
         cutoff_date = pd.Timestamp.now().normalize() - pd.Timedelta(days=30)
-        
         recent_jobs_df = final_df[final_df['Parsed Date'] >= cutoff_date].copy()
         
         filtered_df = recent_jobs_df[~recent_jobs_df['Location'].str.contains('remote', case=False, na=False)].copy()
