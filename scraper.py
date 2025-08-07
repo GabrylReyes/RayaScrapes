@@ -68,9 +68,6 @@ def scrape_jobs(location):
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
     
-    # --- CHANGE HERE: The binary_location line is now REMOVED ---
-    # The new GitHub Action handles this automatically.
-    
     service = Service()
     driver = webdriver.Chrome(service=service, options=options)
     
@@ -158,21 +155,33 @@ if __name__ == "__main__":
     print("\n--- All scraping finished. ---")
 
     if all_results_dfs:
-        final_df = pd.concat(all_results_dfs, ignore_index=True)
+        final_df = pd.concat(all_results_dfs, ignore_index=True).drop_duplicates()
         print(f"\nScraped a total of {len(final_df)} jobs. Now applying filters...")
 
+        # --- FIX 1: STRICT LOCATION FILTER ---
+        # Create a regex pattern from our target locations (e.g., 'San Diego|Mountain View')
+        location_pattern = '|'.join([loc.split(',')[0] for loc in target_locations])
+        final_df = final_df[final_df['Location'].str.contains(location_pattern, case=False, na=False)].copy()
+
+        # Filter for the last 30 days
         final_df['Parsed Date'] = pd.to_datetime(final_df['Date Posted'], format='%m/%d/%y')
         cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=30)
         recent_jobs_df = final_df[final_df['Parsed Date'] >= cutoff_date].copy()
-        recent_jobs_df.drop(columns=['Parsed Date'], inplace=True)
+        
+        # Filter to remove 'Remote' jobs
+        filtered_df = recent_jobs_df[~recent_jobs_df['Location'].str.contains('remote', case=False, na=False)].copy()
 
-        filtered_df = recent_jobs_df[recent_jobs_df['Location'].str.lower() != 'remote'].copy()
+        # --- FIX 2: SORT BY DATE (NEWEST FIRST) ---
+        sorted_df = filtered_df.sort_values(by='Parsed Date', ascending=False)
+        
+        # Drop the temporary 'Parsed Date' column for a clean final output
+        sorted_df = sorted_df.drop(columns=['Parsed Date'])
 
-        if not filtered_df.empty:
-            print(f"\nFound {len(filtered_df)} recent, on-site jobs.")
-            print(filtered_df.to_string())
-            send_email(filtered_df)
+        if not sorted_df.empty:
+            print(f"\nFound {len(sorted_df)} recent, on-site jobs in target locations.")
+            print(sorted_df.to_string())
+            send_email(sorted_df)
         else:
-            print("\nFound jobs, but none matched the date and location criteria.")
+            print("\nFound jobs, but none matched all the date and location criteria.")
     else:
         print("\nNo jobs found across all specified locations.")
