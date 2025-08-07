@@ -158,23 +158,22 @@ if __name__ == "__main__":
         final_df = pd.concat(all_results_dfs, ignore_index=True).drop_duplicates()
         print(f"\nScraped a total of {len(final_df)} jobs. Now applying filters...")
 
-        # --- FIX 1: STRICT LOCATION FILTER ---
-        # Create a regex pattern from our target locations (e.g., 'San Diego|Mountain View')
         location_pattern = '|'.join([loc.split(',')[0] for loc in target_locations])
         final_df = final_df[final_df['Location'].str.contains(location_pattern, case=False, na=False)].copy()
 
         # Filter for the last 30 days
         final_df['Parsed Date'] = pd.to_datetime(final_df['Date Posted'], format='%m/%d/%y')
-        cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=30)
+        
+        # --- FIX HERE: Normalize the current time to midnight before comparing ---
+        # This ensures jobs posted 'today' are always included.
+        cutoff_date = pd.Timestamp.now().normalize() - pd.Timedelta(days=30)
+        
         recent_jobs_df = final_df[final_df['Parsed Date'] >= cutoff_date].copy()
         
-        # Filter to remove 'Remote' jobs
         filtered_df = recent_jobs_df[~recent_jobs_df['Location'].str.contains('remote', case=False, na=False)].copy()
 
-        # --- FIX 2: SORT BY DATE (NEWEST FIRST) ---
         sorted_df = filtered_df.sort_values(by='Parsed Date', ascending=False)
         
-        # Drop the temporary 'Parsed Date' column for a clean final output
         sorted_df = sorted_df.drop(columns=['Parsed Date'])
 
         if not sorted_df.empty:
