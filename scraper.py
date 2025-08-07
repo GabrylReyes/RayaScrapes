@@ -90,9 +90,7 @@ def scrape_jobs(location):
         wait = WebDriverWait(driver, 10)
         wait.until(EC.presence_of_element_located((By.ID, "JBSearchList_container")))
         print("✅ Results page loaded.")
-
-        # --- FINAL FIX: Add a pause to allow all dynamic content to render ---
-        # This prevents a race condition where the newest jobs might be missed.
+        
         print("Pausing for 3 seconds to ensure all jobs are loaded...")
         time.sleep(3)
 
@@ -147,12 +145,25 @@ def scrape_jobs(location):
 
 
 if __name__ == "__main__":
-    target_locations = ["San Diego, CA", "Mountain View, CA"]
+    target_scrape_locations = ["San Diego, CA", "Mountain View, CA"]
+    
+    # --- NEW: DEFINE ACCEPTABLE CITIES FOR OUR FINAL FILTER ---
+    # This gives us regional control over the broad search results.
+    bay_area_cities = [
+        'Mountain View', 'Sunnyvale', 'San Jose', 'Santa Clara', 'Palo Alto',
+        'Cupertino', 'Menlo Park', 'Redwood City', 'San Francisco', 'Oakland',
+        'Fremont', 'Newark', 'Pleasanton', 'Los Gatos'
+    ]
+    san_diego_cities = ['San Diego', 'Carlsbad']
+    
+    # Combine them into one master list for filtering
+    acceptable_cities = bay_area_cities + san_diego_cities
+    
     all_results_dfs = []
     
     print("🚀 Starting multi-location scraper...")
     
-    for loc in target_locations:
+    for loc in target_scrape_locations:
         df = scrape_jobs(loc)
         if not df.empty:
             all_results_dfs.append(df)
@@ -163,21 +174,27 @@ if __name__ == "__main__":
         final_df = pd.concat(all_results_dfs, ignore_index=True).drop_duplicates()
         print(f"\nScraped a total of {len(final_df)} jobs. Now applying filters...")
 
-        location_pattern = '|'.join([loc.split(',')[0] for loc in target_locations])
+        # --- UPDATED LOCATION FILTER ---
+        # Create a regex pattern from our list of acceptable cities
+        location_pattern = '|'.join(acceptable_cities)
         final_df = final_df[final_df['Location'].str.contains(location_pattern, case=False, na=False)].copy()
 
+        # Filter for the last 30 days
         final_df['Parsed Date'] = pd.to_datetime(final_df['Date Posted'], format='%m/%d/%y')
         cutoff_date = pd.Timestamp.now().normalize() - pd.Timedelta(days=30)
         recent_jobs_df = final_df[final_df['Parsed Date'] >= cutoff_date].copy()
         
+        # Filter to remove 'Remote' jobs
         filtered_df = recent_jobs_df[~recent_jobs_df['Location'].str.contains('remote', case=False, na=False)].copy()
 
+        # Sort by date (newest first)
         sorted_df = filtered_df.sort_values(by='Parsed Date', ascending=False)
         
+        # Drop the temporary 'Parsed Date' column for a clean final output
         sorted_df = sorted_df.drop(columns=['Parsed Date'])
 
         if not sorted_df.empty:
-            print(f"\nFound {len(sorted_df)} recent, on-site jobs in target locations.")
+            print(f"\nFound {len(sorted_df)} recent, on-site jobs in target regions.")
             print(sorted_df.to_string())
             send_email(sorted_df)
         else:
