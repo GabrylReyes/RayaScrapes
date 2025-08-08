@@ -181,7 +181,7 @@ if __name__ == "__main__":
 
         # Filter for the last 30 days
         final_df['Parsed Date'] = pd.to_datetime(final_df['Date Posted'], format='%m/%d/%y')
-        cutoff_date = pd.Timestamp.now().normalize() - pd.Timedelta(days=30)
+        cutoff_date = pd.Timestamp.now().normalize() - pd.Timedelta(days=5)
         recent_jobs_df = final_df[final_df['Parsed Date'] >= cutoff_date].copy()
         
         # Filter to remove 'Remote' jobs
